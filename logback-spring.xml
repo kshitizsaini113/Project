@@ -2,62 +2,58 @@
 <configuration>
 
     <!-- ==================== PROPERTIES ==================== -->
-    <property name="LOG_DIR"  value="logs" />
-    <property name="APP_NAME" value="my-app" />
+    <!-- Fallback to 'logs' if env var is not set -->
+    <property name="LOG_DIR"        value="${API_LOGGING_PATH:-logs}" />
+    <property name="APP_NAME"       value="co-app" />
+    <property name="MAX_FILE_SIZE"  value="${LOG_MAX_FILE_SIZE:-10MB}" />
+    <property name="MAX_HISTORY"    value="${LOG_MAX_HISTORY:-30}" />
+    <property name="TOTAL_SIZE_CAP" value="${LOG_TOTAL_SIZE_CAP:-1GB}" />
 
     <!-- ==================== PATTERNS ==================== -->
-    <!-- %X{key} pulls values from MDC -->
-    <property name="CONSOLE_PATTERN"
-              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} | orderId=%X{orderId} userId=%X{userId} | %msg%n" />
-
-    <property name="FILE_PATTERN"
-              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} | orderId=%X{orderId} userId=%X{userId} | %msg%n" />
+    <property name="LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} | traceId=%X{traceId} userId=%X{userId} | %msg%n" />
 
     <!-- ==================== CONSOLE APPENDER ==================== -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>${CONSOLE_PATTERN}</pattern>
+            <pattern>${LOG_PATTERN}</pattern>
         </encoder>
     </appender>
 
     <!-- ==================== ROLLING FILE APPENDER ==================== -->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <!-- Active log file: co-app.log -->
         <file>${LOG_DIR}/${APP_NAME}.log</file>
 
         <encoder>
-            <pattern>${FILE_PATTERN}</pattern>
+            <pattern>${LOG_PATTERN}</pattern>
         </encoder>
 
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <!-- Roll over daily, with date + index in filename -->
-            <fileNamePattern>${LOG_DIR}/archived/${APP_NAME}.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <!--
+                Rolled file naming: co-app-1.log, co-app-2.log, ...
+                %i is the incrementing index (1, 2, 3...)
+                .gz compresses rolled files automatically
+            -->
+            <fileNamePattern>${LOG_DIR}/${APP_NAME}-%i.log.gz</fileNamePattern>
 
-            <!-- Max size per file before rolling within the same day -->
-            <maxFileSize>10MB</maxFileSize>
+            <!-- Roll when file reaches this size -->
+            <maxFileSize>${MAX_FILE_SIZE}</maxFileSize>
 
-            <!-- Keep 30 days of history -->
-            <maxHistory>30</maxHistory>
+            <!-- Number of rolled files to keep -->
+            <maxHistory>${MAX_HISTORY}</maxHistory>
 
-            <!-- Cap total log storage -->
-            <totalSizeCap>1GB</totalSizeCap>
+            <!-- Hard cap on total log directory size -->
+            <totalSizeCap>${TOTAL_SIZE_CAP}</totalSizeCap>
         </rollingPolicy>
     </appender>
 
     <!-- ==================== ASYNC WRAPPERS ==================== -->
-    <!-- Wrap FILE appender in async to avoid blocking app threads -->
     <appender name="ASYNC_FILE" class="ch.qos.logback.classic.AsyncAppender">
         <appender-ref ref="FILE" />
-
-        <!-- Queue size (default 256) -->
         <queueSize>512</queueSize>
-
-        <!-- Don't drop logs when queue is 80% full (default drops DEBUG/INFO) -->
         <discardingThreshold>0</discardingThreshold>
-
-        <!-- Block instead of dropping if queue is full -->
         <neverBlock>false</neverBlock>
-
-        <!-- Preserve MDC, caller data across async boundary -->
         <includeCallerData>true</includeCallerData>
     </appender>
 
@@ -68,13 +64,11 @@
     </appender>
 
     <!-- ==================== LOGGERS ==================== -->
-    <!-- Your app packages — DEBUG level -->
     <logger name="com.yourcompany" level="DEBUG" additivity="false">
         <appender-ref ref="ASYNC_CONSOLE" />
         <appender-ref ref="ASYNC_FILE" />
     </logger>
 
-    <!-- Root logger — INFO level for everything else -->
     <root level="INFO">
         <appender-ref ref="ASYNC_CONSOLE" />
         <appender-ref ref="ASYNC_FILE" />
